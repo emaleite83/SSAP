@@ -1,0 +1,253 @@
+#Importing
+import numpy as np
+import math
+
+#Defining instance variables
+N_nProducts = 0
+K_nShelves = 0
+u_maxFacings = []
+p_profit = []
+a_productWidth = []
+b_productHeight = []
+l_minFacings = []
+w_shelfWidth = []
+h_shelfHeight = []
+gamma_shelfAttractiveness = []
+s_matrix=[]
+c_matrix=[]
+
+#Specifying the file path
+import os
+original_file_path = "AG_2.dat"
+file_path = os.path.splitext(original_file_path)[0] + ".txt"
+#os.rename(original_file_path, file_path)
+
+#Creating a dictionary to map variable names to the corresponding variables and their data types
+variables = {
+    "N_nProducts": (int, N_nProducts),
+    "K_nShelves": (int, K_nShelves),
+    "u_maxFacings": (list, u_maxFacings),
+    "p_profit": (list, p_profit),
+    "a_productWidth": (list, a_productWidth),
+    "b_productHeight": (list, b_productHeight),
+    "l_minFacings": (list, l_minFacings),
+    "w_shelfWidth": (list, w_shelfWidth),
+    "h_shelfHeight": (list, h_shelfHeight),
+    "gamma_shelfAttractiveness": (list, gamma_shelfAttractiveness)
+}
+
+#Opening and reading the text file
+with open(file_path, 'r') as file:
+    for line in file:
+        parts = line.strip().split('=')
+        if len(parts) == 2:
+            variable_name = parts[0].strip()
+            variable_value = parts[1].strip()[:-1]
+            if variable_name == "name":
+              name = variable_value
+            elif variable_name == "N_nProducts":
+              N_nProducts = int(variable_value)
+            elif variable_name == "K_nShelves":
+              K_nShelves = int(variable_value)
+            elif variable_name == "u_maxFacings":
+              u_maxFacings = [int(val) for val in variable_value[1:-1].split()]
+            elif variable_name == "p_profit":
+              p_profit = [float(val) for val in variable_value[1:-1].split()]
+            elif variable_name == "a_productWidth":
+              a_productWidth = [float(val) for val in variable_value[1:-1].split()]
+            elif variable_name == "b_productHeight":
+              b_productHeight = [float(val) for val in variable_value[1:-1].split()]
+            elif variable_name == "l_minFacings":
+              l_minFacings = [int(val) for val in variable_value[1:-1].split()]
+            elif variable_name == "w_shelfWidth":
+              w_shelfWidth = [int(val) for val in variable_value[1:-1].split()]
+            elif variable_name == "h_shelfHeight":
+              h_shelfHeight = [float(val) for val in variable_value[1:-1].split()]
+            elif variable_name == "gamma_shelfAttractiveness":
+              gamma_shelfAttractiveness = [float(val) for val in variable_value[1:-1].split()]
+
+#Height matrix
+height_matrix = np.full((len(b_productHeight), len(h_shelfHeight)), False)
+for i in range(len(b_productHeight)):
+  for j in range(len(h_shelfHeight)):
+      if b_productHeight[i] <= h_shelfHeight[j]:
+          height_matrix[i, j] = True
+if np.any(height_matrix == False):
+  print("There are products that do not fit on at least one shelf.")
+else:
+  print("All products fit on all shelves.")
+
+#Dispatching rule
+ratio = np.empty((N_nProducts))
+for i in range(N_nProducts):
+  ratio[i] = p_profit[i]/a_productWidth[i]
+
+ratio_min = np.min(ratio)
+ratio_max = np.max(ratio)
+for i in range(len(ratio)):
+  ratio[i] = (ratio[i] - ratio_min)/(ratio_max - ratio_min)
+
+gamma_shelfAttractiveness_real=list(gamma_shelfAttractiveness)
+
+attractiveness_min = np.min(gamma_shelfAttractiveness)
+attractiveness_max = np.max(gamma_shelfAttractiveness)
+
+for i in range(len(gamma_shelfAttractiveness)):
+  gamma_shelfAttractiveness[i] = (gamma_shelfAttractiveness[i] - attractiveness_min)/(attractiveness_max - attractiveness_min)
+
+candidate_matrix = np.empty((N_nProducts,K_nShelves))
+for i in range(N_nProducts):
+  for k in range(K_nShelves):
+    candidate_matrix[i][k] = gamma_shelfAttractiveness[k]+ratio[i]
+
+candidate_matrix = candidate_matrix * height_matrix.astype(int)
+
+flattened = candidate_matrix.flatten()
+unique_elements, counts = np.unique(flattened, return_counts=True)
+repeated_values_exist = np.any(counts > 1)
+if repeated_values_exist:
+    print("There are repeated values in the candidate matrix.")
+else:
+    print("There are no repeated values in the candidate matrix.")
+
+w_matrix = np.zeros((N_nProducts,K_nShelves), dtype=int)
+
+sorted_indices = np.argsort(candidate_matrix, axis=None)[::-1]
+sorted_indices_list = np.column_stack(np.unravel_index(sorted_indices, candidate_matrix.shape))
+
+
+shelf_space=np.zeros(K_nShelves,dtype=float)
+for i in range(len(shelf_space)):
+  shelf_space[i]=w_shelfWidth[i]
+
+
+########################################### CONSTRUCTIVE HEURISTIC #####################
+
+allocation_order=[]
+iterations=0
+i=0
+products_remaining=[i for i in range(N_nProducts)]
+shelves_remaining=[i for i in range(K_nShelves)]
+allocation_possible=True
+
+while iterations<N_nProducts:
+  i=0
+  w_matrix_ghost=w_matrix
+  shelf_space_ghost=shelf_space
+  sorted_indices_list_ghost=sorted_indices_list
+  products_remaining_ghost=products_remaining
+  
+  #######VERIFICAÇÃO SE VÃO CABER OS MIN FACINGS DOS RESTANTES PRODUTOS (com as ghosts)
+  
+  if a_productWidth[sorted_indices_list_ghost[i][0]]*u_maxFacings[sorted_indices_list_ghost[i][0]] <= shelf_space_ghost[sorted_indices_list_ghost[i][1]]:
+    w_matrix_ghost[sorted_indices_list_ghost[i][0]][sorted_indices_list_ghost[i][1]] = u_maxFacings[sorted_indices_list_ghost[i][0]]
+  else:
+    w_matrix_ghost[sorted_indices_list_ghost[i][0]][sorted_indices_list_ghost[i][1]]=math.floor(shelf_space_ghost[sorted_indices_list_ghost[i][1]]/a_productWidth[sorted_indices_list_ghost[i][0]])
+
+  del products_remaining_ghost[sorted_indices_list_ghost[i][0]]
+  
+  indices_to_remove_ghost = []
+  for h in range(len(sorted_indices_list_ghost)):
+    if sorted_indices_list_ghost[h][0] == sorted_indices_list_ghost[i][0]:
+        indices_to_remove_ghost.append(h)
+  sorted_indices_list_ghost = np.delete(sorted_indices_list_ghost, indices_to_remove_ghost, axis=0)
+
+  for product_index in products_remaining_ghost:
+    indices_to_remove_ghost=[]
+    indices_to_remove_shelves_ghost=[]
+    j=0
+    while j < len(sorted_indices_list_ghost):
+      if sorted_indices_list_ghost[j][0] == product_index:
+       w_matrix_ghost[sorted_indices_list_ghost[j][0]][sorted_indices_list_ghost[j][1]]=l_minFacings[product_index] #atualiza ghost matrix com o min facings do prox produto remaining
+       shelf_space_ghost[sorted_indices_list_ghost[j][1]]=shelf_space_ghost[sorted_indices_list_ghost[j][1]]-a_productWidth[product_index]*l_minFacings[product_index] #atualiza o ghost shelf space
+
+       for h in range(len(sorted_indices_list_ghost)):
+        if sorted_indices_list_ghost[j][0] == sorted_indices_list_ghost[h][0]:
+          indices_to_remove_ghost.append(h)
+       sorted_indices_list_ghost = np.delete(sorted_indices_list_ghost, indices_to_remove_ghost, axis=0) #remove o produto dos remaining
+
+      print(w_matrix_ghost)
+
+      #Rever esta parte
+      #Remover a shelf se o produto seguinte não couber
+      if j+1 < len(sorted_indices_list_ghost):
+        if a_productWidth[sorted_indices_list_ghost[j+1][0]]*l_minFacings[sorted_indices_list_ghost[j+1][0]]>shelf_space_ghost[sorted_indices_list_ghost[j][1]]:
+          for p in range(len(sorted_indices_list_ghost)):
+            if p<len(sorted_indices_list_ghost):
+              if sorted_indices_list_ghost[p][1] == sorted_indices_list_ghost[j][1]: 
+                indices_to_remove_shelves_ghost.append(p)
+        sorted_indices_list_ghost = np.delete(sorted_indices_list_ghost, indices_to_remove_shelves_ghost, axis=0)
+          
+      j+=177
+      
+
+
+  
+  #Verifica a feasibility da ghost matrix
+  def check_feasibility_ghost(w_matrix_ghost):
+    feasibility_ghost = 0
+    for i in range(N_nProducts):
+      sum_w_ghost = 0
+      for k in range(K_nShelves):
+        sum_w_ghost = sum_w_ghost + w_matrix_ghost[i][k]
+      if sum_w_ghost < l_minFacings[i]:
+        feasibility_ghost = feasibility_ghost + 1
+      elif sum_w_ghost > u_maxFacings[i]:
+        feasibility_ghost = feasibility_ghost + 1
+
+    for k in range(K_nShelves):
+      sum_width_ghost = 0
+      for i in range(N_nProducts):
+        sum_width_ghost = sum_width_ghost + w_matrix_ghost[i][k] * a_productWidth[i]
+      if sum_width_ghost > w_shelfWidth[k]:
+        feasibility_ghost = feasibility_ghost + 1
+
+    if feasibility_ghost == 0:
+        allocation_possible=True
+    else:
+        allocation_possible=False
+  
+    check_feasibility_ghost(w_matrix_ghost)
+
+  ##### FIM DA VERIFICAÇÃO SE CABEM OS MIN FACINGS
+
+  #Alocação dos valores reais
+  if allocation_possible:
+    if a_productWidth[sorted_indices_list[i][0]]*u_maxFacings[sorted_indices_list[i][0]] <= shelf_space[sorted_indices_list[i][1]]:
+      w_matrix[sorted_indices_list[i][0]][sorted_indices_list[i][1]] = u_maxFacings[sorted_indices_list[i][0]]
+    else:
+      w_matrix[sorted_indices_list[i][0]][sorted_indices_list[i][1]]=math.floor(shelf_space[sorted_indices_list[i][1]]/a_productWidth[sorted_indices_list[i][0]])
+  else:
+    w_matrix[sorted_indices_list[i][0]][sorted_indices_list[i][1]]=l_minFacings[sorted_indices_list[i][0]]
+
+
+  #Remove o produto dos remaining
+  del products_remaining[sorted_indices_list[i][0]]
+  
+  #Atualização de espaço
+  shelf_space[sorted_indices_list[i][1]]=shelf_space[sorted_indices_list[i][1]]-a_productWidth[sorted_indices_list[i][0]]*w_matrix[sorted_indices_list[i][0]][sorted_indices_list[i][1]]
+
+  #Atualização da allocation order
+  allocation_order.append((sorted_indices_list[i][0],sorted_indices_list[i][1]))
+
+  #Remove produto depois de o meter
+  indices_to_remove = []
+  for j in range(len(sorted_indices_list)):
+    if sorted_indices_list[j][0] == sorted_indices_list[i][0]:
+        indices_to_remove.append(j)
+  sorted_indices_list = np.delete(sorted_indices_list, indices_to_remove, axis=0)
+  
+  ##Remove shelf se o produto seguinte (no sorted_indices_list) não couber na shelf nem o min facing
+  indices_to_remove_shelves = []
+  if i+1 < len(sorted_indices_list):
+    if a_productWidth[sorted_indices_list[i+1][0]]*l_minFacings[sorted_indices_list[i+1][0]]>shelf_space[sorted_indices_list[i][1]]:
+      for j in range(len(sorted_indices_list)):
+        if sorted_indices_list[j][1] == sorted_indices_list[i][1]: 
+            indices_to_remove_shelves.append(j)
+    sorted_indices_list = np.delete(sorted_indices_list, indices_to_remove_shelves, axis=0)
+
+  i+=1
+  iterations+=1
+
+
+print(w_matrix)
